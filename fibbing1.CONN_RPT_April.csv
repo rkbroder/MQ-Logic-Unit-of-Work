@@ -1,0 +1,19 @@
+Long Running Task Report for MQ
+Channel Name = SYSTEM.ADMIN.SVRCONN
+     Number of seconds UOW is out = 1508.72 
+     Start Date of UOW = 2023-04-15
+     Start Time of UOW = 05.44.08
+     Conn ID = b'AMQCBOBBEE      \xd9\x9b:d\x01\x15_ '
+     Application TAG = port Packs\IH03\rfhutilc.exe
+     Beginning Log Extent = S0000000.LOG
+     Application UID = mqm
+     Process ID = 30726
+     Object Names = BOBBEE
+               MQPUT Count = 1
+               MQPUT Non-Persistent Count = 0
+               MQPUT Persistent Count =  1
+               MQPUT1 Non-Persistent Count =  0
+               MQPUT1 Persistent Count =  0
+               Currnt Queue Depth =  1
+               Open Input Count =  0
+               Open Output Count =  1
