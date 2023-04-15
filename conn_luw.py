@@ -77,23 +77,13 @@ def mq_queue_manager_names():
 def conn_check(queueManager):
     logger.debug('MQS-MQLUW-002 - Start collect_queue_stats\n')
     rc=True
-    
-    count=0
-    tag=False
-    a=True
-
-#######
-####### display conn(*) where(channel NE '') APPLTAG CHANNEL CONNAME CONNOPTS
-#######
+###    a=True
 
 ###
 ### Issure MQCMD_INQUIRE_CONNECTION on all connections WE are looking for a value in UOWLOGDA UOWLOGTI which
 ###        indicates there is a transaction under control
 ### all non-SYSTEM queus
 ###
-###    null_byte = b'\'\''
-    null_byte=b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-    conn_args = {pymqi.CMQCFC.MQBACF_GENERIC_CONNECTION_ID: pymqi.ByteString('')}
 
 ### Filter Mapping
 ##    'less': CMQCFC.MQCFOP_LESS,
@@ -142,10 +132,7 @@ def conn_check(queueManager):
               logger.debug('MQS-MQLUW-002 - UOW seconds duratione = {a}' .format(a=uow_tsecs))
               logger.debug('MQS-MQLUW-002 - Log Start Date = {a}' .format(a=conn_log_start_date))
               if uow_tsecs > luwtollarance:
-                conn_id = str(conn_info[pymqi.CMQCFC.MQBACF_CONNECTION_ID])
-                conn_id = conn_id.rstrip("'")
-                conn_id = conn_id.lstrip("b")
-                conn_id = conn_id.lstrip("'")
+                conn_id = conn_info[pymqi.CMQCFC.MQBACF_CONNECTION_ID]
                 conn_channel_name = conn_info[pymqi.CMQCFC.MQCACH_CHANNEL_NAME].decode('utf-8').strip()
                 logger.debug('MQS-MQLUW-002 - Channel Name = {a}' .format(a=conn_channel_name))
                 logger.debug('MQS-MLUWQ-002 - conn_id = {a}' .format(a=conn_id))
@@ -163,7 +150,7 @@ def conn_check(queueManager):
                 qstatsreport.write(outputL)
                 outputL="     Start Time of UOW = " + conn_log_start_time + "\n"
                 qstatsreport.write(outputL)
-                outputL="     Conn ID = " + conn_id + "\n"
+                outputL="     Conn ID = " + str(conn_id) + "\n"
                 qstatsreport.write(outputL)  
                 outputL="     Application TAG = " + conn_appl_tag + "\n"
                 qstatsreport.write(outputL)
@@ -174,16 +161,16 @@ def conn_check(queueManager):
                 conn_process_id_str = "% s" % conn_process_id
                 outputL="     Process ID = " + conn_process_id_str + "\n"
                 qstatsreport.write(outputL)
+
+                args= []
+                attrs= []
+                args.append(pymqi.CFBS(Parameter=pymqi.CMQCFC.MQBACF_CONNECTION_ID,String=conn_id))
+                args.append(pymqi.CFIL(Parameter=pymqi.CMQCFC.MQIACF_CONNECTION_ATTRS,Values=[pymqi.CMQCFC.MQIACF_ALL]))
+                args.append(pymqi.CFIN(Parameter=pymqi.CMQCFC.MQIACF_CONN_INFO_TYPE,Value=pymqi.CMQCFC.MQIACF_CONN_INFO_HANDLE))
+
                 try:
-###
-###    args= []
-###    args.append(pymqi.CFBS(Parameter=pymqi.CMQCFC.MQBACF_CONNECTION_ID,String=conn_id))
-###    args.append(pymqi.CFIL(Parameter=pymqi.CMQCFC.MQIACF_CONNECTION_ATTRS,Values=[pymqi.CMQCFC.MQIACF_ALL]))
-###    response = pcf.MQCMD_INQUIRE_CONNECTION(args)
-###
-###                  conn_handle_response=pcf.MQCMD_INQUIRE_CONNECTION({pymqi.CMQCFC.MQBACF_GENERIC_CONNECTION_ID:pymqi.ByteString(''),
-                  conn_handle_response=pcf.MQCMD_INQUIRE_CONNECTION({pymqi.CMQCFC.MQBACF_GENERIC_CONNECTION_ID:pymqi.ByteString(''),
-                  	pymqi.CMQCFC.MQIACF_CONN_INFO_TYPE:pymqi.CMQCFC.MQIACF_CONN_INFO_HANDLE,pymqi.CMQCFC.MQIACF_CONNECTION_ATTRS:pymqi.CMQCFC.MQIACF_ALL})
+
+                  conn_handle_response=pcf.MQCMD_INQUIRE_CONNECTION(args) 
                 except pymqi.MQMIError as e:
                   if e.comp == pymqi.CMQC.MQCC_FAILED and (e.reason == pymqi.CMQC.MQRC_UNKNOWN_OBJECT_NAME or e.reason == pymqi.CMQCFC.MQRCCF_NONE_FOUND):
                     logger.error('MQS-MQLUW-002 - No connections handle for MQCMD_INQUIRE_CONNECTION (handle) - 1')
@@ -191,22 +178,21 @@ def conn_check(queueManager):
                     logger.error('MQS-MQLUW-002 - No connection handle for MQCMD_INQUIRE_CONNECTION (handle) - 2')
                     raise        
                 else:
-                  logger.debug('MQS-MQLUW-002 - We got a response\n')
+                  logger.debug('MQS-MQLUW-002 - We got a response for a unique ConnectionID\n')
                   logger.debug('MQS-MLUWQ-002 - conn_handle_response type = {a}' .format(a=type(conn_handle_response)))
                   logger.debug('MQS-MQLUW-002 - Length of conn_handle_response = {a}' .format(a=len(conn_handle_response)))
                   for conn_handle_info in conn_handle_response:	
-                    logger.debug('MQS-MQLUW-002 - Response Line = {a}' .format(a=conn_handle_info))
+                    logger.debug('MQS-MQLUW-002 - Response Line Handle = {a}' .format(a=conn_handle_info))
                     conn_handle_id = str(conn_handle_info[pymqi.CMQCFC.MQBACF_CONNECTION_ID])
                     conn_handle_id = conn_handle_id.rstrip("'")
                     conn_handle_id = conn_handle_id.lstrip("b")
                     conn_handle_id = conn_handle_id.lstrip("'")
                     logger.debug('MQS-MLUWQ-002 - conn_handle_id = {a}' .format(a=conn_handle_id))
-                    if conn_handle_id ==  conn_id:
-                      logger.debug('MQS-MQLUW-002 - We got a MATCH\n')
-                      conn_handle_obj_name = conn_handle_info[pymqi.CMQCFC.MQCACF_OBJECT_NAME].decode('utf-8').strip()  
-                      outputL="     Object Names = " + conn_handle_obj_name + "\n"
-                      qstatsreport.write(outputL)
-                      queue_put_stats(queueManager, conn_handle_obj_name)
+                    logger.debug('MQS-MQLUW-002 - We got a MATCH\n')
+                    conn_handle_obj_name = conn_handle_info[pymqi.CMQCFC.MQCACF_OBJECT_NAME].decode('utf-8').strip()  
+                    outputL="     Object Names = " + conn_handle_obj_name + "\n"
+                    qstatsreport.write(outputL)
+                    queue_put_stats(queueManager, conn_handle_obj_name)
               
     qstatsreport.close()
     return rc 
@@ -256,15 +242,12 @@ def connect_queue_manager(queueManager):
 ###############################################################################
 def queue_put_stats(queueManager, qname):
     rc=True
-    global mqputcount, mqputbytecount, mqputnpcount, mqputpcount, mqputbackoutcount, mqput1npcount, mqput1pcount, mqputnpbytecount, mqputpbytecount
 ###
 ### Execute the command line for amqsrua to capture QSTAT
 ###
     putqstats = subprocess.check_output(['amqsrua', '-m', queueManager, '-c', 'STATQ', '-t', 'PUT', '-o', qname, '-n1'])
     putqstats = str(putqstats)
     putqstats = putqstats.split('\\n')
-
-    count=0
     logger.debug('MQS-MQLUW-002 - PUTQSTATS type = {a}' .format(a=type(putqstats)))
 
 ###
@@ -316,7 +299,6 @@ def queue_put_stats(queueManager, qname):
             logger.info('MQS-MQLUW-002 -         MQPUT1 Non-Persistent Count =  {a}' .format(a=mqput1npcount))
             outputL="               MQPUT1 Non-Persistent Count =  " + mqput1npcount + "\n"
             qstatsreport.write(outputL)
-            count=count+1
             continue
 #
 ### MQPUT1 persistent message count
@@ -328,7 +310,6 @@ def queue_put_stats(queueManager, qname):
             logger.info('MQS-MQLUW-002 -         MQPUT1 Persistent Count =  {a}' .format(a=mqput1pcount))
             outputL="               MQPUT1 Persistent Count =  " + mqput1pcount + "\n"
             qstatsreport.write(outputL)
-            count=count+1
             continue
 ###
 ### Issure MQCMD_INQUIRE_Q on all Local Queues, then execute a MQCMD_RESET_Q_STATS against
