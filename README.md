@@ -11,7 +11,7 @@ The duration is kept in the properties file. If it is missing the script will de
 
 The Targeted Queue Manager in in the properties file. I this is missing the script will run against all Queue Managers
 
-The script runs in SERVER mode.  This does not connect to the Queue Manager in PYTHONS default CLIENT mode. To achieve this PYTHON must be recompiled as a SERVER or the client connect to the QMGR must be implemented. There is a connect_Queue_manager.py method included in this library that present what you need for CLIENT mode.
+The script runs in SERVER mode.  This does not connect to the Queue Manager in PYTHONS default CLIENT mode. To achieve CLIENT Mode PYTHON must be recompiled as a SERVER or the client connect to the QMGR must be implemented. There is a connect_Queue_manager.py method included in this library that presents what you need for CLIENT mode. The additional properties need to be added to the config.properties file
 
 REPORT:
 
