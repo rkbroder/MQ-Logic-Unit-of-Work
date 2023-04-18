@@ -1,4 +1,32 @@
-## Import the needed libraries
+############################################################################
+###                         conn_luw.py()                                ###
+### Script to interrogate the Queue Manager connections speciffically    ###
+### looking for Long Running Units of Worl (LUW) that could cause issues ###
+### in the logging system.                                               ###
+###                                                                      ###
+### The script currently runs as a PYTHON Server application which is not###
+### the default installation for PYTHON fo MQ. PYMQI would have to be    ###
+### rebuilt to run as MQ SERVER. The other option is to inject the code  ###
+### connect_queue_manager.py from the same directory into the script and ###
+### after adding the properties to the properties file, call that        ###
+### routine.                                                             ###
+###                                                                      ###
+### The script first INQUIRES on all connections. It interrogates the    ###
+### Response list for Connections that have a transaction based in the   ###
+### log. It then calculates the duration. If greater than the threshold  ###
+### It will perform a second INQ_CONN for the HANDLE for that conn and   ###
+### Report on all the revelant fields on open objects.                   ###
+###                                                                      ###
+### The default elapse time for the LUW is 20 seconds. this can be       ###
+### overidden in the properties file as marked.                          ###
+###                                                                      ###
+### The script produces a report file of all connections with associated ###
+### data. The script also produces a DEBUG file whose detail is          ###
+### controlled in the logging properties file.                           ###  
+###                                                                      ###
+############################################################################
+###
+### Import the needed libraries
 import configparser
 import subprocess
 import platform
