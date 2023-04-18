@@ -457,7 +457,7 @@ list0=hostname.split(".")
 hostHLQ=list0[0].strip()                                                               
 logger.debug('MQS-MQLUW-002 - Hostname = {a}' .format(a=hostHLQ))                      
 name = hostHLQ + ".CONN_RPT_" + current_month_name
-filename = "%s.csv" % name
+filename = "%s.txt" % name
 if file_exists(filename):
    logger.debug('MQS-MQLUW-002 - Report file exists = {a}' .format(a=filename))
    qstatsreport = open(filename, "a")
