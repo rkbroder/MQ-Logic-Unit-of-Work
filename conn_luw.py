@@ -4,12 +4,16 @@
 ### looking for Long Running Units of Worl (LUW) that could cause issues ###
 ### in the logging system.                                               ###
 ###                                                                      ###
-### The script currently runs as a PYTHON Server application which is not###
-### the default installation for PYTHON fo MQ. PYMQI would have to be    ###
-### rebuilt to run as MQ SERVER. The other option is to inject the code  ###
-### connect_queue_manager.py from the same directory into the script and ###
-### after adding the properties to the properties file, call that        ###
-### routine.                                                             ###
+### The script currently runs as either a PYMQI Server or PYMQI Client   ###
+### application. PYMQI Client is the default install. PYMQI will have to ###
+### be re built/installed to function as MQ Server application. There are###
+### Instructions in MSWord format in the GitHubrepository.               ###
+###                                                                      ###
+### The trigger to connect as an MQ CLient is in the [MQConnections]     ###
+### section of the properties file. It's  appearance assumes the script  ###
+### is running under MQ PYMQI Client mode.                               ###
+###                                                                      ###
+###     https://github.com/rkbroder/MQ-Logic-Unit-of-Work                ###
 ###                                                                      ###
 ### The script first INQUIRES on all connections. It interrogates the    ###
 ### Response list for Connections that have a transaction based in the   ###
@@ -22,7 +26,11 @@
 ###                                                                      ###
 ### The script produces a report file of all connections with associated ###
 ### data. The script also produces a DEBUG file whose detail is          ###
-### controlled in the logging properties file.                           ###  
+### controlled in the logging properties file.                           ###
+###                                                                      ###
+### Dependency:                                                          ###
+###    PYTHON 3+                                                         ###
+###    PYMQI 1.12.10                                                     ###  
 ###                                                                      ###
 ############################################################################
 ###
@@ -70,6 +78,18 @@ def get_config_dict(section):
 ###  apears in the proprties file we will use than. Otherwise, the script ###
 ###  will look for QMGRS on the server.                                   ###
 ###                                                                       ###
+### NOTE:                                                                 ###
+### If running as a client, right now, you can only connect to a single   ###
+### QMGR. You need to set the property file to:                           ###
+### [qmgrName]                                                            ###
+### key1=<queue manager name>                                             ###
+###                                                                       ###
+### This is the trigger for a single Queue Manager AND                    ###
+### [MQConnection]                                                        ###
+###                                                                       ###
+### Is the trigger for the CLIENT connection properites. This connection  ###
+### can support SSL.                                                      ###
+###                                                                       ###
 #############################################################################
 def mq_queue_manager_names():
   if config.has_section('qmgrName'):
@@ -103,7 +123,7 @@ def mq_queue_manager_names():
 ###                                                                         ###
 ###############################################################################
 def conn_check(queueManager):
-    logger.debug('MQS-MQLUW-002 - Start collect_queue_stats\n')
+    logger.debug('MQS-MQLUW-002 - Start conn_check\n')
     rc=True
 ###    a=True
 
@@ -132,7 +152,8 @@ def conn_check(queueManager):
 ### Issure MQCMD_INQUIRE_CONNECTION
 ###
     try:
-        conn_response=pcf.MQCMD_INQUIRE_CONNECTION({pymqi.CMQCFC.MQBACF_GENERIC_CONNECTION_ID:pymqi.ByteString(''),pymqi.CMQCFC.MQIACF_CONNECTION_ATTRS:pymqi.CMQCFC.MQIACF_ALL})	
+###       conn_response=pcf_obj.MQCMD_INQUIRE_CONNECTION(args1)    	
+       conn_response=pcf_obj.MQCMD_INQUIRE_CONNECTION({pymqi.CMQCFC.MQBACF_GENERIC_CONNECTION_ID:pymqi.ByteString(b''),pymqi.CMQCFC.MQIACF_CONNECTION_ATTRS:pymqi.CMQCFC.MQIACF_ALL})	
     except pymqi.MQMIError as e:
        if e.comp == pymqi.CMQC.MQCC_FAILED and e.reason == pymqi.CMQC.MQRC_UNKNOWN_OBJECT_NAME:
            logger.error('MQS-MQLUW-002 - No connections for MQCMD_INQUIRE_CONNECTION - 1')
@@ -198,7 +219,7 @@ def conn_check(queueManager):
 
                 try:
 
-                  conn_handle_response=pcf.MQCMD_INQUIRE_CONNECTION(args) 
+                  conn_handle_response=pcf_obj.MQCMD_INQUIRE_CONNECTION(args) 
                 except pymqi.MQMIError as e:
                   if e.comp == pymqi.CMQC.MQCC_FAILED and (e.reason == pymqi.CMQC.MQRC_UNKNOWN_OBJECT_NAME or e.reason == pymqi.CMQCFC.MQRCCF_NONE_FOUND):
                     logger.error('MQS-MQLUW-002 - No connections handle for MQCMD_INQUIRE_CONNECTION (handle) - 1')
@@ -228,37 +249,160 @@ def conn_check(queueManager):
 ###############################################################################
 ###                                                                         ###
 ###                        connect_queue_manager()                          ###
-### Connect to the Queue manager non-Client                                 ###
+### This function provides the code to connect to the QMGR.                 ###
+### It will connect either server or client based on the existence in the   ###
+### properties file:                                                        ###
+###   [MQConnection]                                                        ###
+### which will DEFAULT it to a client connection. This is the default build ###
+### for PYMQI. It requires key values ###
+### in the config.property file. IT can also connect using SSL provided a   ###
+### valid KEY DB is suplied.                                                ###
+### Stanza:                                                                 ###
+###    [MQConnection]                                                       ###
+###    qmgr=                                                                ###
+###    ssl= (NO/YES)                                                        ###
+###    host=                                                                ###
+###    port=                                                                ###
+###    channel=                                                             ###                     
+###    cipher=                                                              ###
+###    repos= (path to KDB)                                                 ###                       
 ###                                                                         ###
 ###############################################################################
 def connect_queue_manager(queueManager):
-  rc=True
-  
-  try:
-    logger.debug('MQS-MQLUW-000 - About to connect to queue manager = {a}' .format(a=queueManager))
 ###
-### This method does a SERVIC connection to the QMGR. The PYMQI package has been compile
+### Check for connecion stanza (MQConnection), If it exists we are doing a 
+### CLIENT connection and will ignore the queueManager parameter as it will be
+### in the config.properties file.
+###
+
+  if config.has_section('MQConnection'):
+      logger.debug('MQS-MQH-009 - Section MQConnection exist. We will initiate a CLIENT Connection!')
+      mq_connection_property = get_config_dict('MQConnection')
+      logger.debug('MQS-MQH-000 - Connection Property = {a}' .format(a=mq_connection_property))
+      property_found=True
+      mq_connection_property = get_config_dict('MQConnection')
+      logger.debug('MQS-MQH-000 - Connection Property = {a}' .format(a=mq_connection_property))
+      qmgr=queueManager
+      ssl=mq_connection_property.get("ssl")
+      host=mq_connection_property.get("ip")
+      port=mq_connection_property.get("port")
+      channel=mq_connection_property.get("channel")
+      ssl_asbytes=str.encode(ssl)
+      host_asbytes=str.encode(host)
+      port_asbytes=str.encode(port)
+      channel_asbytes=str.encode(channel)
+      logger.debug('MQS-MQH-000 - MQ Connection Information \n Host = {a} \n Port = {b} \n Queue Manager = {c} \n Channel = {d}' .format(a=host, b=port, c=queueManager, d=channel))
+###
+### Check for ssl property to see if we are going to connect usig SSL
+###
+      if ssl == 'NO':
+        conn_info = '%s(%s)' % (host, port)
+        try:
+          logger.debug('MQS-MQH-000 - About to connect to queue manager without SSL = {a}' .format(a=queueManager))
+          qmgr_obj = pymqi.connect(queueManager, channel, conn_info)
+          rc=True
+        except pymqi.MQMIError as e:
+          if e.comp == pymqi.CMQC.MQCC_FAILED and e.reason == pymqi.CMQC.MQRC_HOST_NOT_AVAILABLE:
+            logger.error('MQS-MQH-000 - Such a host `%s` does not exist.' % host)
+            logger.critical('MQS-MQH-000 - Reason code from connection attempt = {a}' .format(a=e.reason))
+            rc=False
+          else:
+      	    rc=False
+      	    logger.critical('MQS-MQH-000 - Other Connect Error')
+      	    logger.critical('MQS-MQH-000 - Reason code from connection attempt = {a}' .format(a=e.reason))
+      	    raise
+      else:
+        conn_info = '%s(%s)' % (host, port)
+        conn_info_asbytes=str.encode(conn_info)
+        ssl_cipher_spec = mq_connection_property.get("cipher")
+        ssl_cipher_spec_asbytes=str.encode(ssl_cipher_spec)
+        repos = mq_connection_property.get("repos")
+        repos_asbytes=str.encode(repos)
+        cd = pymqi.CD()
+        cd.ChannelName = channel_asbytes
+        cd.ConnectionName = conn_info_asbytes
+        cd.ChannelType = pymqi.CMQXC.MQCHT_CLNTCONN
+        cd.TransportType = pymqi.CMQXC.MQXPT_TCP
+        cd.SSLCipherSpec = ssl_cipher_spec_asbytes
+        options = CMQC.MQCNO_NONE
+        cd.UserIdentifier = str.encode('mqm')
+        cd.Password = str.encode('mqm')
+        sco = pymqi.SCO()
+        sco.KeyRepository = repos_asbytes
+        logger.debug('MQS-MQH-000 - MQ SSL Connection Information \n queueManager = {a} \n cd = {b} \n sco = {c} \n' .format(a=queueManager, b=cd, c=sco))
+#  qmgr.connect_with_options(queueManager, options, cd, sco)
+        try:
+           logger.debug('MQS-MQH-000 - About to connect_with_options to queue manager with SSL = {a}' .format(a=queueManager))
+           qmgr_obj = pymqi.QueueManager(None)
+           qmgr_obj = qmgr_conn.connect_with_options(queueManager, cd, sco)
+           rc=True
+        except pymqi.MQMIError as e:
+           if e.comp == pymqi.CMQC.MQCC_FAILED and e.reason == pymqi.CMQC.MQRC_HOST_NOT_AVAILABLE:
+              logger.error('MQS-MQH-000 - Such a host `%s` does not exist.' % host)
+              logger.critical('MQS-MQH-000 - Reason code from connection attempt = {a}' .format(a=e.reason))
+              rc=False
+           else:
+      	      logger.critical('MQS-MQH-000 - Other Connect Error')
+      	      logger.critical('MQS-MQH-000 - Reason code from connection attempt = {a}' .format(a=e.reason))
+      	      rc=False
+      	      raise
+  else:
+      try:
+        logger.error('MQS-MQH-000 - Section MQConnection not found! Doing a Server connection')
+        logger.debug('MQS-MQH-000 - About to connect to queue manager = {a}' .format(a=queueManager))
+###
+### This method does a SERVER connection to the QMGR. The PYMQI package has been compile
 ### as 'BUILD SERVICE'. To do a client build the PYMQI code as client 'BUILD CLIENT' and
 ### then implement the client connection connect_queue_manager found in GITHUB.
 ###
-    qmgr = pymqi.connect(queueManager)
-  except pymqi.MQMIError as e:
-    if e.comp == pymqi.CMQC.MQCC_FAILED and e.reason == pymqi.CMQC.MQRC_HOST_NOT_AVAILABLE:
-        logger.error('MQS-MQLUW-000 - Such a host `%s` does not exist.' % host)
-        rc=False
-    else:
-    	rc=False
-    	logger.critical('MQS-MQLUW-000 - Other Connect Error')
-    	raise
+        qmgr_obj = pymqi.connect(queueManager)
+        rc=True
+      except pymqi.MQMIError as e:
+        if e.comp == pymqi.CMQC.MQCC_FAILED and e.reason == pymqi.CMQC.MQRC_HOST_NOT_AVAILABLE:
+           logger.error('MQS-MQH-000 - Such a host `%s` does not exist.' % host)
+           rc=False
+        else:
+    	     rc=False
+    	     logger.critical('MQS-MQH-000 - Other Connect Error')
+    	     raise
   
   if rc:
-    return qmgr
+    return qmgr_obj
   else:
-  	return False
+    logger.critical('MQS-MQH-000 - EXITING script!!!')   	
+    sys.exit([0])
 
 #
 ## End Connect to Queue Manager
 #
+###def connect_queue_manager(queueManager):
+###  rc=True
+###  
+###  try:
+###    logger.debug('MQS-MQLUW-000 - About to connect to queue manager = {a}' .format(a=queueManager))
+######
+###### This method does a SERVIC connection to the QMGR. The PYMQI package has been compile
+###### as 'BUILD SERVICE'. To do a client build the PYMQI code as client 'BUILD CLIENT' and
+###### then implement the client connection connect_queue_manager found in GITHUB.
+######
+###    qmgr = pymqi.connect(queueManager)
+###  except pymqi.MQMIError as e:
+###    if e.comp == pymqi.CMQC.MQCC_FAILED and e.reason == pymqi.CMQC.MQRC_HOST_NOT_AVAILABLE:
+###        logger.error('MQS-MQLUW-000 - Such a host `%s` does not exist.' % host)
+###        rc=False
+###    else:
+###    	rc=False
+###    	logger.critical('MQS-MQLUW-000 - Other Connect Error')
+###    	raise
+###  
+###  if rc:
+###    return qmgr
+###  else:
+###  	return False
+###
+####
+##### End Connect to Queue Manager
+####
 
 ###############################################################################
 ###                                                                         ###
@@ -350,7 +494,7 @@ def queue_put_stats(queueManager, qname):
 ### Issure MQCMD_INQUIRE_Q on all Local Queues
 ###
     try:
-        queue_response = pcf.MQCMD_INQUIRE_Q(queue_args)
+        queue_response = pcf_obj.MQCMD_INQUIRE_Q(queue_args)
     except pymqi.MQMIError as e:
        if e.comp == pymqi.CMQC.MQCC_FAILED and e.reason == pymqi.CMQC.MQRC_UNKNOWN_OBJECT_NAME:
            logger.error('MQS-MQH-002 - No queue definations - 1')
@@ -478,22 +622,15 @@ else:
   logger.critical('MQS-MQLUW-000 - Queueu Manager Name FAULT **********')
 
 for QueueMGR in QManagers:            
-  ###############################################################################
-  ###                            MQS-MQLUW-002                                  ###
-  ###                       collect_queue_stats()                             ###
-  ###                        Collect Queue Stats                              ###
-  ###                                                                         ###
-  ###############################################################################
   prefix = '*'
   print('Queue Manager = ',QueueMGR)
   
-  qmgr = connect_queue_manager(QueueMGR)
-  pcf = pymqi.PCFExecute(qmgr)
-  logger.debug('MQS-MQLUW-002 -  Process the mqm Group Membership')
-  if conn_check(QueueMGR):
-	  logger.debug('MQS-MQLUW-002 - Queue Stats retrieve processes correctly')
-  else:
-	  logger.critical('MQS-MQLUW-002 - Queue stats retrieveal failed')
-  qmgr.disconnect()	  
-
-
+  qmgr_obj = connect_queue_manager(QueueMGR)     
+  logger.debug('MQS-MQLUW-002 -  Queue Manager Connected')
+  pcf_obj = pymqi.PCFExecute(qmgr_obj)                                             
+  logger.debug('MQS-MQLUW-002 -  Check the connections')                
+  if conn_check(QueueMGR):                                                         
+    logger.debug('MQS-MQLUW-002 - Connectio Check successful')       
+  else:                                                                            
+    logger.critical('MQS-MQLUW-002 - Error in Connections Check')               
+  qmgr_obj.disconnect() 	
